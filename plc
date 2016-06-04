@@ -1,0 +1,17 @@
+#
+# pcl - Parallel Line Count
+#
+# Purpose: to execute line count on multiple files in parallel, then sumarize the results
+# Creates a thread by core. files can be gziped.
+#
+# (c) GPL v3 by Gabriel Orozco, 2016/06/03
+# version 0.0.1
+
+
+# Get the number of cores
+
+# Determine if pigz is installed (much faster than gunzip)
+
+# Checks parameters
+
+# work goes here
