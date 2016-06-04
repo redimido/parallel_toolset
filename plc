@@ -14,9 +14,10 @@ uncompress_program="pigz -d --to-stdout"
 uncompress_enabled=1
 count_time=""
 verbose=0
+num_of_compressed_files=0
 
 
-export uncompress_program uncompress_enabled count_time verbose
+export uncompress_program uncompress_enabled count_time verbose num_of_compressed_files
 
 
 # -[ Functions ]---------------------------------------------------------------------------
@@ -24,9 +25,14 @@ export uncompress_program uncompress_enabled count_time verbose
 
 
 # -[ Main ]--------------------------------------------------------------------------------
+[[ -z "${DEBUG}" ]] || set -x
 
-# Get the number of cores
-number_of_cores=$(grep processor /proc/cpuinfo | wc -l)
+export tmp_dir=/tmp/plc-$$
+mkdir -p "${tmp_dir}"
+trap "rm -rf ${tmp_dir}" 0 1 9 15
+
+# Initialize the number of threads = number of cores
+number_of_threads=$(grep processor /proc/cpuinfo | wc -l)
 
 # Determine if pigz is installed (much faster than gunzip)
 which pigz >/dev/null
@@ -44,23 +50,34 @@ if [ $? -ne 0 ]; then
 fi
 
 # Check parameters
-case "${1}" in
-  '-v'|'-V') VERBOSE=1; shift ;;
-  '-d'|'-D') set -x ; shift ;;
-esac
+while true; do
+  case "${1}" in
+    '-v'|'-V') verbose=1; shift ;;
+    '-d'|'-D') set -x ; shift ;;
+    '-n'|'-N') number_of_threads=$2; shift; shift;;
+    *) break;;
+  esac
+done
 
 # perform the parallel line counting:
 # limit by number of cores. much safer and we can run several in parallel:
 num_files=$#
 { while [ $# -ge 1 ]; do
     # make sure we do not max out processes
-    while [ $(ps -a | egrep 'pigz|gunzip|cat' | wc -l) -ge ${number_of_cores} ]; do sleep 2s; done
-    # 
-    [[ ${1} =~ .gz ]] && cat_program="${uncompress_program}" || cat_program="cat"
-    { ${decompress} ${1} | wc -l & }
+    while [ $(ps -a | egrep 'pigz|gunzip|cat' | wc -l) -ge ${number_of_threads} ]; do sleep 2s; done
+    # determine if using the uncompress for this file
+    if [[ ${1} =~ .gz ]]; then
+       cat_program="${uncompress_program}"
+       let num_of_compressed_files+=1
+    else
+       cat_program="cat"
+    fi
+    { ${cat_program} ${1} | wc -l & }
     shift
   done
-} | awk 'BEGIN { count=0; } { count=count+$1 } END { print count }'
-[ ${VERBOSE} -eq 1 ] && echo "Number of Files Processed: ${num_files}"
+  echo ${num_of_compressed_files} > ${tmp_dir}/num_of_compressed_files.txt
+} | awk 'BEGIN { count=0; } { count=count+$1 } END { print count" lines" }'
+num_of_compressed_files=$(cat ${tmp_dir}/num_of_compressed_files.txt)
+[ ${verbose} -eq 1 ] && echo "Number of Files Processed: ${num_files}, Number of compressed files: ${num_of_compressed_files}"
 set +x
 
