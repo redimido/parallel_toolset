@@ -15,12 +15,34 @@ uncompress_enabled=1
 count_time=""
 verbose=0
 num_of_compressed_files=0
+starting_seconds=${SECONDS}
 
 
 export uncompress_program uncompress_enabled count_time verbose num_of_compressed_files
 
 
 # -[ Functions ]---------------------------------------------------------------------------
+show_help() {
+cat <<EOF
+   Parallel Line Count
+   Written by Gabriel Orozco Ruiz Velazco. 2016/06/04. (c) GPLv3
+
+   Usage  : plc [parameters] <files>
+
+   Parameters:
+            -d                Enables debug
+            -v                Gives a verbose message at the end of the calculation
+            -n <number>       Fixes the number of threads to the number specified instead
+                              of the number of cores.
+            -h                shows this help
+
+   Purpose: Counts and sums all the lines in the files given in the command line.
+            Creates a thread by core. files can be gziped (uses pigz if available).
+
+   Example: plc /directory/*/*gz /directory2/*
+
+EOF
+}
 
 
 
@@ -52,9 +74,10 @@ fi
 # Check parameters
 while true; do
   case "${1}" in
-    '-v'|'-V') verbose=1; shift ;;
-    '-d'|'-D') set -x ; shift ;;
-    '-n'|'-N') number_of_threads=$2; shift; shift;;
+    '-v') verbose=1; shift ;;
+    '-d') set -x ; shift ;;
+    '-n') number_of_threads=$2 ; shift ; shift ;;
+    '-h') show_help ; exit 1 ;;
     *) break;;
   esac
 done
@@ -63,21 +86,32 @@ done
 # limit by number of cores. much safer and we can run several in parallel:
 num_files=$#
 { while [ $# -ge 1 ]; do
-    # make sure we do not max out processes
-    while [ $(ps -a | egrep 'pigz|gunzip|cat' | wc -l) -ge ${number_of_threads} ]; do sleep 2s; done
-    # determine if using the uncompress for this file
-    if [[ ${1} =~ .gz ]]; then
-       cat_program="${uncompress_program}"
-       let num_of_compressed_files+=1
-    else
-       cat_program="cat"
+    if [ ! -d "${1}" ]; then
+      # make sure we do not max out processes
+      while [ $(ps -a | egrep 'pigz|gunzip|cat' | wc -l) -ge ${number_of_threads} ]; do sleep 2s; done
+
+      # determine if using the uncompress for this file
+      if [[ ${1} =~ .gz ]]; then
+         cat_program="${uncompress_program}"
+         let num_of_compressed_files+=1
+      else
+         cat_program="cat"
+      fi
+
+      # send the job
+      { ${cat_program} ${1} | wc -l & }
     fi
-    { ${cat_program} ${1} | wc -l & }
+
     shift
+
   done
   echo ${num_of_compressed_files} > ${tmp_dir}/num_of_compressed_files.txt
 } | awk 'BEGIN { count=0; } { count=count+$1 } END { print count" lines" }'
+
+ending_seconds=${SECONDS}
+let seconds_elapsed=${ending_seconds}-${starting_seconds}
+
 num_of_compressed_files=$(cat ${tmp_dir}/num_of_compressed_files.txt)
-[ ${verbose} -eq 1 ] && echo "Number of Files Processed: ${num_files}, Number of compressed files: ${num_of_compressed_files}"
+[ ${verbose} -eq 1 ] && echo "Number of Files Processed: ${num_files}, Number of compressed files: ${num_of_compressed_files}, Seconds Elapsed: ${seconds_elapsed}"
 set +x
 
