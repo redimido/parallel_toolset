@@ -7,11 +7,29 @@
 # (c) GPL v3 by Gabriel Orozco, 2016/06/03
 # version 0.0.1
 
+# General Variables
+uncompress_program="pigz -d"
+uncompress_enabled=1
 
 # Get the number of cores
+number_of_cores=$(grep processor /proc/cpuinfo | wc -l)
 
 # Determine if pigz is installed (much faster than gunzip)
+which pigz >/dev/null
+if [ $? -ne 0 ]; then
+   # pigz is not installed. check gunzip:
+   which gunzip >/dev/null
+   if [ $? -eq 0 ]; then
+      uncompress_program="gunzip"
+   else
+      echo "Unable to find pigz or gunzip on this machine. no compressed files are being counted"
+      uncompress_enabled=0
+   fi
+fi
 
-# Checks parameters
+# Check parameters
+
+
+
 
 # work goes here
