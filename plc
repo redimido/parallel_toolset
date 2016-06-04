@@ -2,14 +2,28 @@
 # pcl - Parallel Line Count
 #
 # Purpose: to execute line count on multiple files in parallel, then sumarize the results
-# Creates a thread by core. files can be gziped.
+# Creates a thread by core. files can be gziped (uses pigz if available).
+#
+# parameters: a file or several files, like in /directory/*/*gz
 #
 # (c) GPL v3 by Gabriel Orozco, 2016/06/03
 # version 0.0.1
 
-# General Variables
-uncompress_program="pigz -d"
+# -[ General Variables ]--------------------------------------------------------------------
+uncompress_program="pigz -d --to-stdout"
 uncompress_enabled=1
+count_time=""
+verbose=0
+
+
+export uncompress_program uncompress_enabled count_time verbose
+
+
+# -[ Functions ]---------------------------------------------------------------------------
+
+
+
+# -[ Main ]--------------------------------------------------------------------------------
 
 # Get the number of cores
 number_of_cores=$(grep processor /proc/cpuinfo | wc -l)
@@ -20,16 +34,33 @@ if [ $? -ne 0 ]; then
    # pigz is not installed. check gunzip:
    which gunzip >/dev/null
    if [ $? -eq 0 ]; then
-      uncompress_program="gunzip"
+      # gunzip found
+      uncompress_program="gunzip --to-stdout"
    else
       echo "Unable to find pigz or gunzip on this machine. no compressed files are being counted"
       uncompress_enabled=0
+      uncompress_program=""
    fi
 fi
 
 # Check parameters
+case "${1}" in
+  '-v'|'-V') VERBOSE=1; shift ;;
+  '-d'|'-D') set -x ; shift ;;
+esac
 
+# perform the parallel line counting:
+# limit by number of cores. much safer and we can run several in parallel:
+num_files=$#
+{ while [ $# -ge 1 ]; do
+    # make sure we do not max out processes
+    while [ $(ps -a | egrep 'pigz|gunzip|cat' | wc -l) -ge ${number_of_cores} ]; do sleep 2s; done
+    # 
+    [[ ${1} =~ .gz ]] && cat_program="${uncompress_program}" || cat_program="cat"
+    { ${decompress} ${1} | wc -l & }
+    shift
+  done
+} | awk 'BEGIN { count=0; } { count=count+$1 } END { print count }'
+[ ${VERBOSE} -eq 1 ] && echo "Number of Files Processed: ${num_files}"
+set +x
 
-
-
-# work goes here
